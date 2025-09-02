@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <title>신남 좌석 매매·임대장 · Pastel v7</title>
+    <meta name="theme-color" content="#ffffff" />
+    <style>
+      :root{
+        --bg:#ffffff;--text:#1f2937;--muted:#6b7280;--border:#e5e7eb;--card:#f8fafc;--brand:#6366f1;
+        --vacant:#ffe4e6;--vacant-b:#fecdd3;--rent:#e0f2fe;--rent-b:#bae6fd;--board:#ecfdf5;--board-b:#a7f3d0;
+      }
+      html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Inter,Arial,sans-serif}
+      *{box-sizing:border-box}
+      .container{max-width:1100px;margin:0 auto;padding:20px 14px 80px}
+      .hstack{display:flex;align-items:center;gap:8px}
+      .between{display:flex;align-items:center;justify-content:space-between;gap:8px}
+      .btn{padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:#f9fafb;cursor:pointer}
+      .btn:hover{background:#f3f4f6}
+      .btn-ghost{padding:6px 10px;border-radius:10px;border:1px dashed var(--border);background:transparent;cursor:pointer}
+      .input{padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:#111827;width:100%}
+      .select{padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:#111827}
+      .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px}
+      .badge{font-size:12px;padding:2px 6px;border-radius:999px;border:1px solid var(--border);background:#fff;color:#374151}
+      .title-sm{font-size:13px;color:var(--muted);margin-bottom:6px;font-weight:600}
+      .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+      .grid24{display:grid;grid-template-rows:repeat(4,auto);gap:8px}
+      .row2{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+      .board{margin-top:12px;padding:6px 10px;font-size:13px;text-align:center;border-radius:12px;background:var(--board);color:#047857;border:1px solid var(--board-b)}
+      .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;text-align:center}
+      .summary .card{font-size:13px}
+      .seat{position:relative;padding:10px;border-radius:12px;text-align:left;border:1px solid var(--border);background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:4px;transition:transform .06s ease, box-shadow .12s ease, opacity .12s}
+      .seat:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.06)}
+      .seat .top{display:flex;justify-content:space-between;align-items:center}
+      .label{font-size:13px;font-weight:800;color:#374151}
+      .line{font-size:12px;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .price{font-size:12px;font-weight:700;color:#111827}
+      .price .muted{color:var(--muted);font-weight:400}
+      .pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:#fff}
+      .seg{display:inline-flex;border:1px solid var(--border);border-radius:999px;overflow:hidden}
+      .seg button{padding:6px 10px;border:0;background:#fff;cursor:pointer}
+      .seg button.active{background:#eef2ff;color:#4338ca}
+      .ring{outline:2px solid #a5b4fc}
+      .muted-opa{opacity:.35}
+      /* modal */
+      .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:50}
+      .modal{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;width:480px;max-width:92vw}
+      .field{display:flex;flex-direction:column;gap:4px}
+      .cols{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+      .tiny{font-size:12px;color:var(--muted)}
+      .w-clip{width:min(160px,42vw)}
+      @media (max-width:900px){.grid3{grid-template-columns:1fr}} 
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+      const {useState,useMemo,useEffect} = React;
+
+      // storage helpers
+      const isClient = typeof window!=="undefined";
+      const safeGet=(k,f=null)=>{if(!isClient)return f;try{return localStorage.getItem(k)??f;}catch{return f;}};
+      const safeSet=(k,v)=>{if(!isClient)return;try{localStorage.setItem(k,v);}catch{}};
+
+      // keys (v7)
+      const STORAGE_KEY="seat-market-v7";
+      const PIN_KEY="seat-market-pin";const LOCK_KEY="seat-market-locked";const BOARD_KEY="seat-market-board-top";
+      const DENSITY_KEY="seat-market-density";const WRAP_KEY="seat-market-wrap";const SHOW_PRICE_BADGE_KEY="seat-market-price-badge";
+
+      // utils
+      const KRW=(n)=>(Number(n)||0).toLocaleString("ko-KR",{maximumFractionDigits:0})+"원";
+      const now=()=>new Date().toISOString();
+      const labels=()=>{const a=[];for(let b=1;b<=3;b++){for(let r=0;r<4;r++){const ch=String.fromCharCode(65+r);for(let c=1;c<=2;c++)a.push(`${b}${ch}${c}`)}}return a};
+
+      const defSeats=()=>labels().map((label,i)=>({id:i+1,label,block:Number(label[0]),row:label[1],col:Number(label[2]),owner:"",tenant:"",price:0,rentFee:0,lastUpdated:now(),history:[]}));
+
+      const loadState=()=>{try{const raw=safeGet(STORAGE_KEY);if(!raw)return defSeats();const p=JSON.parse(raw);if(!Array.isArray(p)||p.length!==24)return defSeats();return p;}catch{return defSeats();}};
+      const saveState=(seats)=>safeSet(STORAGE_KEY,JSON.stringify(seats));
+
+      const loadPin=()=>safeGet(PIN_KEY,"");const savePin=(v)=>safeSet(PIN_KEY,v||"");
+      const loadLocked=()=>safeGet(LOCK_KEY,"true")==="true";const saveLocked=(v)=>safeSet(LOCK_KEY,String(!!v));
+      const loadBoard=()=>safeGet(BOARD_KEY,"true")==="true";const saveBoard=(v)=>safeSet(BOARD_KEY,String(!!v));
+      const loadDensity=()=>safeGet(DENSITY_KEY,"medium");const saveDensity=(v)=>safeSet(DENSITY_KEY,v);
+      const loadWrap=()=>safeGet(WRAP_KEY,"false")==="true";const saveWrap=(v)=>safeSet(WRAP_KEY,String(!!v));
+      const loadPriceBadge=()=>safeGet(SHOW_PRICE_BADGE_KEY,"true")==="true";const savePriceBadge=(v)=>safeSet(SHOW_PRICE_BADGE_KEY,String(!!v));
+
+      function App(){
+        const [seats,setSeats]=useState(loadState);
+        const [q,setQ]=useState("");
+        const [sort,setSort]=useState("label");
+        const [pin,setPin]=useState(loadPin);
+        const [locked,setLocked]=useState(loadLocked);
+        const [boardTop,setBoardTop]=useState(loadBoard);
+        const [density,setDensity]=useState(loadDensity);
+        const [wrap,setWrap]=useState(loadWrap);
+        const [showPriceBadge,setShowPriceBadge]=useState(loadPriceBadge);
+        const [exportOpen,setExportOpen]=useState(false);
+        const [importOpen,setImportOpen]=useState(false);
+        const [editOpen,setEditOpen]=useState(false);
+        const [activeId,setActiveId]=useState(null);
+        const [undoStack,setUndoStack]=useState([]);
+
+        useEffect(()=>saveState(seats),[seats]);
+        useEffect(()=>savePin(pin),[pin]);
+        useEffect(()=>saveLocked(locked),[locked]);
+        useEffect(()=>saveBoard(boardTop),[boardTop]);
+        useEffect(()=>saveDensity(density),[density]);
+        useEffect(()=>saveWrap(wrap),[wrap]);
+        useEffect(()=>savePriceBadge(showPriceBadge),[showPriceBadge]);
+
+        // derived
+        const qText=q.trim().toLowerCase();
+        const matchSeat=(s)=>!qText||s.label.toLowerCase().includes(qText)||s.owner.toLowerCase().includes(qText)||s.tenant.toLowerCase().includes(qText);
+        const sorted=useMemo(()=>{
+          const list=[...seats];
+          if(sort==="priceDesc") list.sort((a,b)=>b.price-a.price);
+          else if(sort==="priceAsc") list.sort((a,b)=>a.price-b.price);
+          else if(sort==="vacant") list.sort((a,b)=>(a.tenant?1:0)-(b.tenant?1:0));
+          else list.sort((a,b)=>a.label.localeCompare(b.label,"ko"));
+          return list;
+        },[seats,sort]);
+
+        const stats=useMemo(()=>{
+          const total=seats.reduce((acc,s)=>acc+(Number(s.price)||0),0);
+          const avg=total/seats.length;const max=seats.slice().sort((a,b)=>b.price-a.price)[0];
+          return {total,avg,max};
+        },[seats]);
+
+        // undo & guard
+        const pushUndo=(prev)=>setUndoStack(st=>[JSON.stringify(prev),...st].slice(0,15));
+        const undo=()=>{if(!undoStack.length)return alert("되돌릴 기록이 없음");const [top,...rest]=undoStack;setSeats(JSON.parse(top));setUndoStack(rest)};
+        const requireEdit=(fn)=>{if(!pin)return fn();if(!locked)return fn();const input=prompt("편집 PIN 입력");if(input===pin)fn();else alert("PIN 불일치")};
+
+        const updateSeat=(id,patch,note)=>{
+          setSeats(prev=>{const snap=prev.map(s=>({...s}));pushUndo(snap);return prev.map(s=>s.id===id?{...s,...patch,lastUpdated:now(),history:note?[{time:now(),note},...(s.history||[])].slice(0,20):s.history}:s)});
+        };
+
+        const resetAll=()=>{if(!confirm("전체 초기화함? (되돌리기 가능)"))return;pushUndo(seats);setSeats(defSeats())};
+
+        const active=seats.find(s=>s.id===activeId)||null;
+
+        // density → min height
+        const seatMinH = density==="small" ? (wrap?78:64) : density==="large" ? (wrap?122:96) : (wrap?100:80);
+        const seatStyle=(vacant)=>({background:vacant?"var(--vacant)":"var(--rent)",borderColor:vacant?"var(--vacant-b)":"var(--rent-b)",minHeight:seatMinH});
+
+        return (
+          <div className="container">
+            {/* header */}
+            <div className="between">
+              <div className="hstack">
+                <div style={{width:38,height:38,borderRadius:12,background:"#f3f4f6",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center"}}>🎒</div>
+                <div>
+                  <div style={{fontWeight:800}}>신남 좌석 매매·임대장</div>
+                  <div className="tiny">3분단(2×4) = 24석 · 로컬 저장</div>
+                </div>
+              </div>
+              <div className="hstack">
+                <button className="btn" onClick={undo}>⏪ 되돌리기</button>
+                <details>
+                  <summary className="btn">⚙️ 설정</summary>
+                  <div className="card" style={{marginTop:6,minWidth:300}}>
+                    <div className="title-sm">보안/데이터</div>
+                    <div className="between"><span>편집 잠금</span><input type="checkbox" checked={locked} onChange={e=>setLocked(e.target.checked)} /></div>
+                    <div className="between" style={{marginTop:6}}><span>PIN</span><input className="input" style={{width:120}} value={pin} onChange={e=>setPin(e.target.value)} placeholder="숫자 4자리" /></div>
+                    <hr style={{border:0,borderTop:"1px solid var(--border)",margin:"10px 0"}}/>
+                    <div className="title-sm">배치/표시</div>
+                    <button className="btn" onClick={()=>setBoardTop(v=>!v)}>칠판 위치 전환 (현재 {boardTop?"상단":"하단"})</button>
+                    <div className="between" style={{marginTop:8}}>
+                      <span>칸 크기</span>
+                      <div className="seg">
+                        {(["small","medium","large"]).map(d=>(
+                          <button key={d} className={density===d?"active":""} onClick={()=>setDensity(d)}>{d==="small"?"작게":d==="medium"?"보통":"크게"}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="between" style={{marginTop:8}}><span>텍스트 줄바꿈</span><input type="checkbox" checked={wrap} onChange={e=>setWrap(e.target.checked)} /></div>
+                    <div className="between" style={{marginTop:8}}><span>가격 배지 표시</span><input type="checkbox" checked={showPriceBadge} onChange={e=>setShowPriceBadge(e.target.checked)} /></div>
+                    <hr style={{border:0,borderTop:"1px solid var(--border)",margin:"10px 0"}}/>
+                    <div className="hstack">
+                      <button className="btn" onClick={()=>setExportOpen(true)}>데이터 내보내기</button>
+                      <button className="btn" onClick={()=>setImportOpen(true)}>데이터 가져오기</button>
+                      <button className="btn" onClick={resetAll}>전체 초기화</button>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </div>
+
+            {/* search/sort */}
+            <div className="hstack" style={{marginTop:10}}>
+              <input className="input" style={{flex:1}} placeholder="좌석 라벨(예: 2B1), 소유주, 임차인 검색" value={q} onChange={e=>setQ(e.target.value)} />
+              <select className="select" value={sort} onChange={e=>setSort(e.target.value)}>
+                <option value="label">라벨순</option>
+                <option value="priceDesc">가격 높은순</option>
+                <option value="priceAsc">가격 낮은순</option>
+                <option value="vacant">빈자리 우선</option>
+              </select>
+            </div>
+
+            {boardTop && <div className="board">🧑‍🏫 칠판 (교탁) — 이쪽이 앞</div>}
+
+            {/* seat grid */}
+            <div className="grid3">
+              {[1,2,3].map(block=> (
+                <div key={block} className="card">
+                  <div className="title-sm">{block}분단</div>
+                  <div className="grid24">
+                    {Array.from({length:4}).map((_,r)=> (
+                      <div key={r} className="row2">
+                        {Array.from({length:2}).map((_,c)=>{
+                          const row=String.fromCharCode(65+r);const col=c+1;const label=`${block}${row}${col}`;
+                          const seat=seats.find(s=>s.label===label);
+                          const vacant=!seat?.tenant;const match=matchSeat(seat);
+                          return (
+                            <button key={label} className={`seat ${match?"ring":""} ${qText&&!match?"muted-opa":""}`} style={{...seatStyle(vacant)}} onClick={()=>{setActiveId(seat.id);setEditOpen(true);}}>
+                              <div className="top">
+                                <div className="label">{label}</div>
+                                <span className="badge" style={{display:showPriceBadge?"inline-flex":"none"}}>{KRW(seat.price)}</span>
+                              </div>
+                              <div className="line" style={{whiteSpace:wrap?"normal":"nowrap"}}>소유주: {seat.owner || "-"}</div>
+                              <div className="line" style={{whiteSpace:wrap?"normal":"nowrap"}}>임차인: {seat.tenant || "-"}</div>
+                              <div className="price">{vacant?"":<span className="tiny">임대료 <span className="muted">{KRW(seat.rentFee)}</span></span>}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {!boardTop && <div className="board">🧑‍🏫 칠판 (교탁) — 이쪽이 앞</div>}
+
+            {/* summary */}
+            <div className="summary">
+              <div className="card"><div className="tiny">총 시가</div><div style={{fontWeight:800}}>{KRW(stats.total)}</div></div>
+              <div className="card"><div className="tiny">평균가</div><div style={{fontWeight:800}}>{KRW(stats.avg)}</div></div>
+              <div className="card"><div className="tiny">최고가</div><div style={{fontWeight:800}}>{stats.max?`${stats.max.label} · ${KRW(stats.max.price)}`:"-"}</div></div>
+            </div>
+
+            {/* edit modal */}
+            {editOpen && active && (
+              <div className="backdrop" onClick={()=>setEditOpen(false)}>
+                <div className="modal" onClick={(e)=>e.stopPropagation()}>
+                  <div style={{fontWeight:800,marginBottom:8}}>좌석 정보 수정</div>
+                  <div className="tiny" style={{marginBottom:8}}>라벨: <b style={{color:"#111827"}}>{active.label}</b></div>
+                  <div className="cols">
+                    <div className="field">
+                      <div className="tiny">소유주</div>
+                      <input className="input w-clip" value={active.owner} onChange={e=>requireEdit(()=>updateSeat(active.id,{owner:e.target.value},`소유주 → ${e.target.value}`))} />
+                    </div>
+                    <div className="field">
+                      <div className="tiny">임차인</div>
+                      <input className="input w-clip" value={active.tenant} onChange={e=>requireEdit(()=>updateSeat(active.id,{tenant:e.target.value},`임차인 → ${e.target.value}`))} />
+                    </div>
+                  </div>
+                  <div className="cols" style={{marginTop:8}}>
+                    <div className="field">
+                      <div className="tiny">가격</div>
+                      <input type="number" className="input w-clip" value={active.price} onChange={e=>requireEdit(()=>updateSeat(active.id,{price:Number(e.target.value||0)},`가격 → ${e.target.value}`))} />
+                    </div>
+                    <div className="field">
+                      <div className="tiny">임대료</div>
+                      <input type="number" className="input w-clip" value={active.rentFee} onChange={e=>requireEdit(()=>updateSeat(active.id,{rentFee:Number(e.target.value||0)},`임대료 → ${e.target.value}`))} />
+                    </div>
+                  </div>
+                  <div className="hstack" style={{justifyContent:"flex-end",marginTop:12}}>
+                    <button className="btn-ghost" onClick={()=>requireEdit(()=>updateSeat(active.id,{owner:"",tenant:"",price:0,rentFee:0},"좌석 초기화"))}>초기화</button>
+                    <button className="btn" onClick={()=>setEditOpen(false)}>닫기</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* export */}
+            {exportOpen && (
+              <div className="backdrop" onClick={()=>setExportOpen(false)}>
+                <div className="modal" onClick={(e)=>e.stopPropagation()}>
+                  <div style={{fontWeight:800,marginBottom:8}}>데이터 내보내기 (JSON)</div>
+                  <textarea readonly className="input" style={{height:220}} value={JSON.stringify(seats,null,2)}></textarea>
+                  <div className="hstack" style={{justifyContent:"flex-end",marginTop:12}}>
+                    <button className="btn" onClick={()=>{navigator.clipboard.writeText(JSON.stringify(seats));alert("복사됨")}}>복사</button>
+                    <button className="btn" onClick={()=>setExportOpen(false)}>닫기</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* import */}
+            {importOpen && (
+              <ImportModal onClose={()=>setImportOpen(false)} onLoad={(data)=>{ if(!Array.isArray(data)||data.length!==24) return alert("형식 오류: 배열 24개 필요"); requireEdit(()=>setSeats(data)); setImportOpen(false); }} />
+            )}
+          </div>
+        );
+      }
+
+      function ImportModal({onClose,onLoad}){
+        const [raw,setRaw]=useState("");
+        return (
+          <div className="backdrop" onClick={onClose}>
+            <div className="modal" onClick={(e)=>e.stopPropagation()}>
+              <div style={{fontWeight:800,marginBottom:8}}>데이터 가져오기 (JSON 붙여넣기)</div>
+              <textarea className="input" style={{height:220}} placeholder="여기에 JSON 붙여넣기" value={raw} onChange={e=>setRaw(e.target.value)} />
+              <div className="hstack" style={{justifyContent:"flex-end",marginTop:12}}>
+                <button className="btn" onClick={()=>{try{const data=JSON.parse(raw);onLoad(data);}catch{alert("JSON 파싱 오류")}}}>불러오기</button>
+                <button className="btn" onClick={onClose}>닫기</button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+    </script>
+  </body>
+</html>
